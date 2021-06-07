@@ -22,8 +22,8 @@ STEP_PREFIXES = [
     ("Then ", types.THEN),
     ("@", types.TAG),
     # Continuation of the previously mentioned step type
-    ("And ", None),
-    ("But ", None),
+    ("And ", types.PREVIOUS),
+    ("But ", types.PREVIOUS),
 ]
 
 
@@ -122,6 +122,8 @@ def parse_feature(basedir, filename, encoding="utf-8"):
         if not clean_line and (not prev_mode or prev_mode not in types.FEATURE):
             continue
         mode = get_step_type(clean_line) or mode
+        if mode == types.PREVIOUS:
+            mode = last_step_type
 
         allowed_prev_mode = (types.BACKGROUND, types.GIVEN, types.WHEN)
 
@@ -186,6 +188,7 @@ def parse_feature(basedir, filename, encoding="utf-8"):
                     )
         elif mode and mode not in (types.FEATURE, types.TAG):
             step = Step(name=parsed_line, type=mode, indent=line_indent, line_number=line_number, keyword=keyword)
+            last_step_type = step.type
             if feature.background and not scenario:
                 target = feature.background
             else:

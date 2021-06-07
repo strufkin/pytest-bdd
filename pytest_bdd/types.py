@@ -13,5 +13,6 @@ GIVEN = "given"
 WHEN = "when"
 THEN = "then"
 TAG = "tag"
+PREVIOUS = "previous"
 
 STEP_TYPES = (GIVEN, WHEN, THEN)
