@@ -102,6 +102,7 @@ def parse_feature(basedir, filename, encoding="utf-8"):
     step = None
     multiline_step = False
     prev_line = None
+    last_step_type = None
 
     with io.open(abs_filename, "rt", encoding=encoding) as f:
         content = f.read()
