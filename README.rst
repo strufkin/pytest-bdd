@@ -1,5 +1,5 @@
-BDD library for the py.test runner
-==================================
+BDD library for the pytest runner
+=================================
 
 .. image:: http://img.shields.io/pypi/v/pytest-bdd.svg
    :target: https://pypi.python.org/pypi/pytest-bdd
@@ -358,6 +358,47 @@ it will stay untouched. To allow this, special parameter `target_fixture` exists
 
 In this example existing fixture `foo` will be overridden by given step `I have injecting given` only for scenario it's
 used in.
+
+Sometimes it is also useful to let `when` and `then` steps to provide a fixture as well.
+A common use case is when we have to assert the outcome of an HTTP request:
+
+.. code-block:: python
+
+    # test_blog.py
+
+    from pytest_bdd import scenarios, given, when, then
+
+    from my_app.models import Article
+
+    scenarios("blog.feature")
+
+
+    @given("there is an article", target_fixture="article")
+    def there_is_an_article():
+        return Article()
+
+
+    @when("I request the deletion of the article", target_fixture="request_result")
+    def there_should_be_a_new_article(article, http_client):
+        return http_client.delete(f"/articles/{article.uid}")
+
+
+    @then("the request should be successful")
+    def article_is_published(request_result):
+        assert request_result.status_code == 200
+
+
+.. code-block:: gherkin
+
+    # blog.feature
+
+    Feature: Blog
+        Scenario: Deleting the article
+            Given there is an article
+
+            When I request the deletion of the article
+
+            Then the request should be successful
 
 
 Multiline steps
@@ -730,7 +771,7 @@ scenario test, so we can use standard test selection:
 
 .. code-block:: bash
 
-    py.test -m "backend and login and successful"
+    pytest -m "backend and login and successful"
 
 The feature and scenario markers are not different from standard pytest markers, and the `@` symbol is stripped out
 automatically to allow test selector expressions. If you want to have bdd-related tags to be distinguishable from the
@@ -739,7 +780,7 @@ Note that if you use pytest `--strict` option, all bdd tags mentioned in the fea
 `markers` setting of the `pytest.ini` config. Also for tags please use names which are python-compartible variable
 names, eg starts with a non-number, underscore alphanumberic, etc. That way you can safely use tags for tests filtering.
 
-You can customize how hooks are converted to pytest marks by implementing the
+You can customize how tags are converted to pytest marks by implementing the
 ``pytest_bdd_apply_tag`` hook and returning ``True`` from it:
 
 .. code-block:: python
@@ -1084,27 +1125,27 @@ To have an output in json format:
 
 ::
 
-    py.test --cucumberjson=<path to json report>
+    pytest --cucumberjson=<path to json report>
 
 This will output an expanded (meaning scenario outlines will be expanded to several scenarios) cucumber format.
 To also fill in parameters in the step name, you have to explicitly tell pytest-bdd to use the expanded format:
 
 ::
 
-    py.test --cucumberjson=<path to json report> --cucumberjson-expanded
+    pytest --cucumberjson=<path to json report> --cucumberjson-expanded
 
 To enable gherkin-formatted output on terminal, use
 
 ::
 
-    py.test --gherkin-terminal-reporter
+    pytest --gherkin-terminal-reporter
 
 
 Terminal reporter supports expanded format as well
 
 ::
 
-    py.test --gherkin-terminal-reporter-expanded
+    pytest --gherkin-terminal-reporter-expanded
 
 
 
@@ -1136,7 +1177,7 @@ test execution. The code suggestion tool is called via passing additional pytest
 
 ::
 
-    py.test --generate-missing --feature features tests/functional
+    pytest --generate-missing --feature features tests/functional
 
 The output will be like:
 
