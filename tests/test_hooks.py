@@ -1,11 +1,16 @@
+from __future__ import annotations
+
 import textwrap
 
+from pytest_bdd.utils import collect_dumped_objects
 
-def test_hooks(testdir):
-    testdir.makeconftest("")
 
-    subdir = testdir.mkpydir("subdir")
-    subdir.join("conftest.py").write(
+def test_conftest_module_evaluated_twice(pytester):
+    """Regression test for https://github.com/pytest-dev/pytest-bdd/issues/62"""
+    pytester.makeconftest("")
+
+    subdir = pytester.mkpydir("subdir")
+    subdir.joinpath("conftest.py").write_text(
         textwrap.dedent(
             r"""
         def pytest_pyfunc_call(pyfuncitem):
@@ -17,7 +22,7 @@ def test_hooks(testdir):
         )
     )
 
-    subdir.join("test_foo.py").write(
+    subdir.joinpath("test_foo.py").write_text(
         textwrap.dedent(
             r"""
         from pytest_bdd import scenario
@@ -29,7 +34,7 @@ def test_hooks(testdir):
         )
     )
 
-    subdir.join("foo.feature").write(
+    subdir.joinpath("foo.feature").write_text(
         textwrap.dedent(
             r"""
         Feature: The feature
@@ -38,15 +43,15 @@ def test_hooks(testdir):
         )
     )
 
-    result = testdir.runpytest("-s")
+    result = pytester.runpytest("-s")
 
     assert result.stdout.lines.count("pytest_pyfunc_call hook") == 1
     assert result.stdout.lines.count("pytest_generate_tests hook") == 1
 
 
-def test_item_collection_does_not_break_on_non_function_items(testdir):
+def test_item_collection_does_not_break_on_non_function_items(pytester):
     """Regression test for https://github.com/pytest-dev/pytest-bdd/issues/317"""
-    testdir.makeconftest(
+    pytester.makeconftest(
         """
     import pytest
 
@@ -65,12 +70,88 @@ def test_item_collection_does_not_break_on_non_function_items(testdir):
     """
     )
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         """
     def test_convert_me_to_custom_item_and_assert_true():
         assert False
     """
     )
 
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)
+
+
+def test_pytest_bdd_after_scenario_called_after_scenario(pytester):
+    """Regression test for https://github.com/pytest-dev/pytest-bdd/pull/577"""
+
+    pytester.makefile(
+        ".feature",
+        foo=textwrap.dedent(
+            """\
+            Feature: A feature
+                Scenario: Scenario 1
+                    Given foo
+                    When bar
+                    Then baz
+
+                Scenario: Scenario 2
+                    When bar
+                    Then baz
+            """
+        ),
+    )
+
+    pytester.makepyfile(
+        """
+    import pytest
+    from pytest_bdd import given, when, then, scenarios
+
+
+    scenarios("foo.feature")
+
+
+    @given("foo")
+    @when("bar")
+    @then("baz")
+    def _():
+        pass
+    """
+    )
+
+    pytester.makeconftest(
+        """
+    from pytest_bdd.utils import dump_obj
+
+    def pytest_bdd_after_scenario(request, feature, scenario):
+        dump_obj([feature, scenario])
+    """
+    )
+
+    result = pytester.runpytest("-s")
+    result.assert_outcomes(passed=2)
+
+    hook_calls = collect_dumped_objects(result)
+    assert len(hook_calls) == 2
+    [(feature, scenario_1), (feature_2, scenario_2)] = hook_calls
+    assert feature.name == feature_2.name == "A feature"
+
+    assert scenario_1.name == "Scenario 1"
+    assert scenario_2.name == "Scenario 2"
+
+
+def test_pytest_unconfigure_without_configure(pytester):
+    """
+    Simulate a plugin forcing an exit during configuration before bdd is configured
+    https://github.com/pytest-dev/pytest-bdd/issues/362
+    """
+    pytester.makeconftest(
+        """
+    import pytest
+
+    def pytest_configure(config):
+        pytest.exit("Exit during configure", 0)
+        """
+    )
+
+    result = pytester.runpytest()
+    assert result.ret == 0

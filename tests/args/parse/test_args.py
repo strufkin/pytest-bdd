@@ -1,10 +1,12 @@
 """Step arguments tests."""
 
+from __future__ import annotations
+
 import textwrap
 
 
-def test_every_steps_takes_param_with_the_same_name(testdir):
-    testdir.makefile(
+def test_every_steps_takes_param_with_the_same_name(pytester):
+    pytester.makefile(
         ".feature",
         arguments=textwrap.dedent(
             """\
@@ -14,13 +16,13 @@ def test_every_steps_takes_param_with_the_same_name(testdir):
                     When I pay 2 Euro
                     And I pay 1 Euro
                     Then I should have 0 Euro
-                    And I should have 999999 Euro # In my dream...
+                    And I should have 999999 Euro
 
             """
         ),
     )
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         import pytest
@@ -36,28 +38,28 @@ def test_every_steps_takes_param_with_the_same_name(testdir):
 
 
         @given(parsers.parse("I have {euro:d} Euro"))
-        def i_have(euro, values):
+        def _(euro, values):
             assert euro == values.pop(0)
 
 
         @when(parsers.parse("I pay {euro:d} Euro"))
-        def i_pay(euro, values, request):
+        def _(euro, values, request):
             assert euro == values.pop(0)
 
 
         @then(parsers.parse("I should have {euro:d} Euro"))
-        def i_should_have(euro, values):
+        def _(euro, values):
             assert euro == values.pop(0)
 
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)
 
 
-def test_argument_in_when_step_1(testdir):
-    testdir.makefile(
+def test_argument_in_when_step_1(pytester):
+    pytester.makefile(
         ".feature",
         arguments=textwrap.dedent(
             """\
@@ -70,7 +72,7 @@ def test_argument_in_when_step_1(testdir):
         ),
     )
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         import pytest
@@ -87,21 +89,21 @@ def test_argument_in_when_step_1(testdir):
 
 
         @given(parsers.parse("I have an argument {arg:Number}", extra_types=dict(Number=int)))
-        def argument(arguments, arg):
+        def _(arguments, arg):
             arguments["arg"] = arg
 
 
         @when(parsers.parse("I get argument {arg:d}"))
-        def get_argument(arguments, arg):
+        def _(arguments, arg):
             arguments["arg"] = arg
 
 
         @then(parsers.parse("My argument should be {arg:d}"))
-        def assert_that_my_argument_is_arg(arguments, arg):
+        def _(arguments, arg):
             assert arguments["arg"] == arg
 
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)

@@ -1,10 +1,12 @@
 """Test step alias when decorated multiple times."""
 
+from __future__ import annotations
+
 import textwrap
 
 
-def test_step_alias(testdir):
-    testdir.makefile(
+def test_step_alias(pytester):
+    pytester.makefile(
         ".feature",
         alias=textwrap.dedent(
             """\
@@ -22,7 +24,7 @@ def test_step_alias(testdir):
         ),
     )
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         import pytest
@@ -34,27 +36,27 @@ def test_step_alias(testdir):
 
 
         @given("I have an empty list", target_fixture="results")
-        def results():
+        def _():
             return []
 
 
         @given("I have foo (which is 1) in my list")
         @given("I have bar (alias of foo) in my list")
-        def foo(results):
+        def _(results):
             results.append(1)
 
 
         @when("I do crash (which is 2)")
         @when("I do boom (alias of crash)")
-        def crash(results):
+        def _(results):
             results.append(2)
 
 
         @then("my list should be [1, 1, 2, 2]")
-        def check_results(results):
+        def _(results):
             assert results == [1, 1, 2, 2]
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)

@@ -1,30 +1,36 @@
 """Scenario Outline with empty example values tests."""
+
+from __future__ import annotations
+
 import textwrap
 
+from pytest_bdd.utils import collect_dumped_objects
 
 STEPS = """\
-from pytest_bdd import given, when, then
+from pytest_bdd import given, when, then, parsers
+from pytest_bdd.utils import dump_obj
+
+# Using `parsers.re` so that we can match empty values
+
+@given(parsers.re("there are (?P<start>.*?) cucumbers"))
+def _(start):
+    dump_obj(start)
 
 
-@given("there are <start> cucumbers")
-def start_cucumbers(start):
-    pass
+@when(parsers.re("I eat (?P<eat>.*?) cucumbers"))
+def _(eat):
+    dump_obj(eat)
 
 
-@when("I eat <eat> cucumbers")
-def eat_cucumbers(eat):
-    pass
-
-
-@then("I should have <left> cucumbers")
-def should_have_left_cucumbers(left):
-    pass
+@then(parsers.re("I should have (?P<left>.*?) cucumbers"))
+def _(left):
+    dump_obj(left)
 
 """
 
 
-def test_scenario_with_empty_example_values(testdir):
-    testdir.makefile(
+def test_scenario_with_empty_example_values(pytester):
+    pytester.makefile(
         ".feature",
         outline=textwrap.dedent(
             """\
@@ -40,57 +46,21 @@ def test_scenario_with_empty_example_values(testdir):
             """
         ),
     )
-    testdir.makeconftest(textwrap.dedent(STEPS))
+    pytester.makeconftest(textwrap.dedent(STEPS))
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
-        from pytest_bdd.utils import get_parametrize_markers_args
+        from pytest_bdd.utils import dump_obj
         from pytest_bdd import scenario
+        import json
 
         @scenario("outline.feature", "Outlined with empty example values")
-        def test_outline(request):
-            assert get_parametrize_markers_args(request.node) == ([u"start", u"eat", u"left"], [["#", "", ""]])
-
+        def test_outline():
+            pass
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest("-s")
     result.assert_outcomes(passed=1)
-
-
-def test_scenario_with_empty_example_values_vertical(testdir):
-    testdir.makefile(
-        ".feature",
-        outline=textwrap.dedent(
-            """\
-            Feature: Outline
-                Scenario Outline: Outlined with empty example values vertical
-                    Given there are <start> cucumbers
-                    When I eat <eat> cucumbers
-                    Then I should have <left> cucumbers
-
-                    Examples: Vertical
-                    | start | # |
-                    | eat   |   |
-                    | left  |   |
-            """
-        ),
-    )
-    testdir.makeconftest(textwrap.dedent(STEPS))
-
-    testdir.makepyfile(
-        textwrap.dedent(
-            """\
-        from pytest_bdd.utils import get_parametrize_markers_args
-        from pytest_bdd import scenario
-
-        @scenario("outline.feature", "Outlined with empty example values vertical")
-        def test_outline(request):
-            assert get_parametrize_markers_args(request.node) == ([u"start", u"eat", u"left"], [["#", "", ""]])
-
-        """
-        )
-    )
-    result = testdir.runpytest()
-    result.assert_outcomes(passed=1)
+    assert collect_dumped_objects(result) == ["#", "", ""]

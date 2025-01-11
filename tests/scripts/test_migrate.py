@@ -1,5 +1,7 @@
 """Test code generation command."""
 
+from __future__ import annotations
+
 import os
 import sys
 import textwrap
@@ -9,11 +11,11 @@ from pytest_bdd.scripts import main
 PATH = os.path.dirname(__file__)
 
 
-def test_migrate(monkeypatch, capsys, testdir):
+def test_migrate(monkeypatch, capsys, pytester):
     """Test if the code is migrated by a given file mask."""
-    tests = testdir.mkpydir("tests")
+    tests = pytester.mkpydir("tests")
 
-    tests.join("test_foo.py").write(
+    tests.joinpath("test_foo.py").write_text(
         textwrap.dedent(
             '''
         """Foo bar tests."""
@@ -24,21 +26,17 @@ def test_migrate(monkeypatch, capsys, testdir):
         )
     )
 
-    monkeypatch.setattr(sys, "argv", ["", "migrate", tests.strpath])
+    monkeypatch.setattr(sys, "argv", ["", "migrate", str(tests)])
     main()
     out, err = capsys.readouterr()
     out = "\n".join(sorted(out.splitlines()))
     expected = textwrap.dedent(
         """
     migrated: {0}/test_foo.py
-    skipped: {0}/__init__.py""".format(
-            tests.strpath
-        )[
-            1:
-        ]
+    skipped: {0}/__init__.py""".format(str(tests))[1:]
     )
     assert out == expected
-    assert tests.join("test_foo.py").read() == textwrap.dedent(
+    assert tests.joinpath("test_foo.py").read_text() == textwrap.dedent(
         '''
     """Foo bar tests."""
     from pytest_bdd import scenario

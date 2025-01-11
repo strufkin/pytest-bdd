@@ -1,22 +1,27 @@
 """Test scenario reporting."""
+
+from __future__ import annotations
+
 import textwrap
 
 import pytest
+
+from pytest_bdd.reporting import test_report_context_registry
 
 
 class OfType:
     """Helper object comparison to which is always 'equal'."""
 
-    def __init__(self, type=None):
+    def __init__(self, type: type | None = None) -> None:
         self.type = type
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, self.type) if self.type else True
 
 
-def test_step_trace(testdir):
+def test_step_trace(pytester):
     """Test step trace."""
-    testdir.makefile(
+    pytester.makefile(
         ".ini",
         pytest=textwrap.dedent(
             """
@@ -28,7 +33,7 @@ def test_step_trace(testdir):
     """
         ),
     )
-    feature = testdir.makefile(
+    feature = pytester.makefile(
         ".feature",
         test=textwrap.dedent(
             """
@@ -57,62 +62,66 @@ def test_step_trace(testdir):
     """
         ),
     )
-    relpath = feature.relto(testdir.tmpdir.dirname)
-    testdir.makepyfile(
+    relpath = feature.relative_to(pytester.path.parent)
+    pytester.makepyfile(
         textwrap.dedent(
             """
         import pytest
-        from pytest_bdd import given, when, then, scenarios
+        from pytest_bdd import given, when, then, scenarios, parsers
 
         @given('a passing step')
-        def a_passing_step():
+        def _():
             return 'pass'
 
         @given('some other passing step')
-        def some_other_passing_step():
+        def _():
             return 'pass'
 
         @given('a failing step')
-        def a_failing_step():
+        def _():
             raise Exception('Error')
 
-        @given('there are <start> cucumbers', target_fixture="start_cucumbers")
-        def start_cucumbers(start):
+        @given(parsers.parse('there are {start:d} cucumbers'), target_fixture="cucumbers")
+        def _(start):
             assert isinstance(start, int)
-            return dict(start=start)
+            return {"start": start}
 
 
-        @when('I eat <eat> cucumbers')
-        def eat_cucumbers(start_cucumbers, eat):
+        @when(parsers.parse('I eat {eat:g} cucumbers'))
+        def _(cucumbers, eat):
             assert isinstance(eat, float)
-            start_cucumbers['eat'] = eat
+            cucumbers['eat'] = eat
 
 
-        @then('I should have <left> cucumbers')
-        def should_have_left_cucumbers(start_cucumbers, start, eat, left):
+        @then(parsers.parse('I should have {left} cucumbers'))
+        def _(cucumbers, left):
             assert isinstance(left, str)
-            assert start - eat == int(left)
-            assert start_cucumbers['start'] == start
-            assert start_cucumbers['eat'] == eat
+            assert cucumbers['start'] - cucumbers['eat'] == int(left)
 
-        scenarios('test.feature', example_converters=dict(start=int, eat=float, left=str))
+
+        scenarios('test.feature')
     """
         )
     )
-    result = testdir.inline_run("-vvl")
+    result = pytester.inline_run("-vvl")
     assert result.ret
-    report = result.matchreport("test_passing", when="call").scenario
+    report = result.matchreport("test_passing", when="call")
+    scenario = test_report_context_registry[report].scenario
     expected = {
         "feature": {
             "description": "",
-            "filename": feature.strpath,
+            "keyword": "Feature",
+            "language": "en",
+            "filename": str(feature),
             "line_number": 2,
             "name": "One passing scenario, one failing scenario",
-            "rel_filename": relpath,
+            "rel_filename": str(relpath),
             "tags": ["feature-tag"],
         },
+        "keyword": "Scenario",
         "line_number": 5,
         "name": "Passing",
+        "description": "",
         "steps": [
             {
                 "duration": OfType(float),
@@ -132,24 +141,27 @@ def test_step_trace(testdir):
             },
         ],
         "tags": ["scenario-passing-tag"],
-        "examples": [],
-        "example_kwargs": {},
     }
 
-    assert report == expected
+    assert scenario == expected
 
-    report = result.matchreport("test_failing", when="call").scenario
+    report = result.matchreport("test_failing", when="call")
+    scenario = test_report_context_registry[report].scenario
     expected = {
         "feature": {
             "description": "",
-            "filename": feature.strpath,
+            "keyword": "Feature",
+            "language": "en",
+            "filename": str(feature),
             "line_number": 2,
             "name": "One passing scenario, one failing scenario",
-            "rel_filename": relpath,
+            "rel_filename": str(relpath),
             "tags": ["feature-tag"],
         },
+        "keyword": "Scenario",
         "line_number": 10,
         "name": "Failing",
+        "description": "",
         "steps": [
             {
                 "duration": OfType(float),
@@ -169,30 +181,33 @@ def test_step_trace(testdir):
             },
         ],
         "tags": ["scenario-failing-tag"],
-        "examples": [],
-        "example_kwargs": {},
     }
-    assert report == expected
+    assert scenario == expected
 
-    report = result.matchreport("test_outlined[12-5.0-7]", when="call").scenario
+    report = result.matchreport("test_outlined[12-5-7]", when="call")
+    scenario = test_report_context_registry[report].scenario
     expected = {
         "feature": {
             "description": "",
-            "filename": feature.strpath,
+            "keyword": "Feature",
+            "language": "en",
+            "filename": str(feature),
             "line_number": 2,
             "name": "One passing scenario, one failing scenario",
-            "rel_filename": relpath,
+            "rel_filename": str(relpath),
             "tags": ["feature-tag"],
         },
+        "keyword": "Scenario Outline",
         "line_number": 14,
         "name": "Outlined",
+        "description": "",
         "steps": [
             {
                 "duration": OfType(float),
                 "failed": False,
                 "keyword": "Given",
                 "line_number": 15,
-                "name": "there are <start> cucumbers",
+                "name": "there are 12 cucumbers",
                 "type": "given",
             },
             {
@@ -200,7 +215,7 @@ def test_step_trace(testdir):
                 "failed": False,
                 "keyword": "When",
                 "line_number": 16,
-                "name": "I eat <eat> cucumbers",
+                "name": "I eat 5 cucumbers",
                 "type": "when",
             },
             {
@@ -208,42 +223,38 @@ def test_step_trace(testdir):
                 "failed": False,
                 "keyword": "Then",
                 "line_number": 17,
-                "name": "I should have <left> cucumbers",
+                "name": "I should have 7 cucumbers",
                 "type": "then",
             },
         ],
         "tags": [],
-        "examples": [
-            {
-                "line_number": 19,
-                "name": None,
-                "row_index": 0,
-                "rows": [["start", "eat", "left"], [[12, 5.0, "7"], [5, 4.0, "1"]]],
-            }
-        ],
-        "example_kwargs": {"eat": "5.0", "left": "7", "start": "12"},
     }
-    assert report == expected
+    assert scenario == expected
 
-    report = result.matchreport("test_outlined[5-4.0-1]", when="call").scenario
+    report = result.matchreport("test_outlined[5-4-1]", when="call")
+    scenario = test_report_context_registry[report].scenario
     expected = {
         "feature": {
             "description": "",
-            "filename": feature.strpath,
+            "keyword": "Feature",
+            "language": "en",
+            "filename": str(feature),
             "line_number": 2,
             "name": "One passing scenario, one failing scenario",
-            "rel_filename": relpath,
+            "rel_filename": str(relpath),
             "tags": ["feature-tag"],
         },
+        "keyword": "Scenario Outline",
         "line_number": 14,
         "name": "Outlined",
+        "description": "",
         "steps": [
             {
                 "duration": OfType(float),
                 "failed": False,
                 "keyword": "Given",
                 "line_number": 15,
-                "name": "there are <start> cucumbers",
+                "name": "there are 5 cucumbers",
                 "type": "given",
             },
             {
@@ -251,7 +262,7 @@ def test_step_trace(testdir):
                 "failed": False,
                 "keyword": "When",
                 "line_number": 16,
-                "name": "I eat <eat> cucumbers",
+                "name": "I eat 4 cucumbers",
                 "type": "when",
             },
             {
@@ -259,38 +270,29 @@ def test_step_trace(testdir):
                 "failed": False,
                 "keyword": "Then",
                 "line_number": 17,
-                "name": "I should have <left> cucumbers",
+                "name": "I should have 1 cucumbers",
                 "type": "then",
             },
         ],
         "tags": [],
-        "examples": [
-            {
-                "line_number": 19,
-                "name": None,
-                "row_index": 1,
-                "rows": [["start", "eat", "left"], [[12, 5.0, "7"], [5, 4.0, "1"]]],
-            }
-        ],
-        "example_kwargs": {"eat": "4.0", "left": "1", "start": "5"},
     }
-    assert report == expected
+    assert scenario == expected
 
 
-def test_complex_types(testdir):
+def test_complex_types(pytester, pytestconfig):
     """Test serialization of the complex types."""
-    try:
-        import execnet.gateway_base
-    except ImportError:
+    if not pytestconfig.pluginmanager.has_plugin("xdist"):
         pytest.skip("Execnet not installed")
 
-    testdir.makefile(
+    import execnet.gateway_base
+
+    pytester.makefile(
         ".feature",
         test=textwrap.dedent(
             """
     Feature: Report serialization containing parameters of complex types
 
-    Scenario: Complex
+    Scenario Outline: Complex
         Given there is a coordinate <point>
 
         Examples:
@@ -299,13 +301,13 @@ def test_complex_types(testdir):
     """
         ),
     )
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """
         import pytest
-        from pytest_bdd import given, when, then, scenario
+        from pytest_bdd import given, when, then, scenario, parsers
 
-        class Point(object):
+        class Point:
 
             def __init__(self, x, y):
                 self.x = x
@@ -318,21 +320,28 @@ def test_complex_types(testdir):
         class Alien(object):
             pass
 
-        @given('there is a coordinate <point>')
-        def point(point):
+        @given(
+            parsers.parse('there is a coordinate {point}'),
+            target_fixture="point",
+            converters={"point": Point.parse},
+        )
+        def given_there_is_a_point(point):
             assert isinstance(point, Point)
             return point
 
 
         @pytest.mark.parametrize('alien', [Alien()])
-        @scenario('test.feature', 'Complex', example_converters=dict(point=Point.parse))
+        @scenario('test.feature', 'Complex')
         def test_complex(alien):
             pass
 
     """
         )
     )
-    result = testdir.inline_run("-vvl")
-    report = result.matchreport("test_complex[point0-alien0]", when="call")
-    assert execnet.gateway_base.dumps(report.item)
-    assert execnet.gateway_base.dumps(report.scenario)
+    result = pytester.inline_run("-vvl")
+    report = result.matchreport("test_complex[10,20-alien0]", when="call")
+    assert report.passed
+
+    report_context = test_report_context_registry[report]
+    assert execnet.gateway_base.dumps(report_context.name)
+    assert execnet.gateway_base.dumps(report_context.scenario)

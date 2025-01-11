@@ -1,7 +1,124 @@
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+[project]
+name = "pytest-bdd"
+version = "8.1.0"
+description = "BDD for pytest"
+authors = [
+    {name="Oleg Pidsadnyi", email="oleg.pidsadnyi@gmail.com"},
+    {name="Anatoly Bubenkov", email="bubenkoff@gmail.com"},
+]
+maintainers = [
+    {name="Alessio Bogon", email="778703+youtux@users.noreply.github.com"},
+]
+license = "MIT"
+readme = "README.rst"
+classifiers = [
+    "Development Status :: 6 - Mature",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "Mako",
+    "parse",
+    "parse-type",
+    "pytest>=7.0.0",
+    "typing-extensions",
+    "packaging",
+    "gherkin-official>=29.0.0",
+]
 
-[tool.black]
+[project.urls]
+homepage = "https://pytest-bdd.readthedocs.io/"
+documentation = "https://pytest-bdd.readthedocs.io/"
+repository = "https://github.com/pytest-dev/pytest-bdd"
+
+[project.entry-points."pytest11"]
+"pytest-bdd" = "pytest_bdd.plugin"
+
+[project.scripts]
+"pytest-bdd" = "pytest_bdd.scripts:main"
+
+[tool.poetry.group.dev.dependencies]
+tox = ">=4.11.3"
+mypy = ">=1.6.0"
+types-setuptools = ">=68.2.0.0"
+pytest-xdist = ">=3.3.1"
+coverage = {extras = ["toml"], version = ">=6.5.0"}
+Pygments = ">=2.13.0"  # for code-block highlighting
+sphinx = "*"
+sphinx-autobuild = "*"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
 line-length = 120
-target-version = ['py36', 'py37', 'py38']
+target-version = "py39"
+lint.select = [
+    "B",     # flake8-bugbear
+    "BLE",   # flake8-blind-except
+    "C4",    # flake8-comprehensions
+    "E4",    # pycodestyle - error - import
+    "E7",    # pycodestyle - error - statement
+    "E9",    # pycodestyle - error - runtime
+    "F",     # pyflakes
+    "I",     # isort
+    "ISC",   # flake8-implicit-str-concat
+    "PERF",  # perflint
+    "UP",    # pyupgrade
+]
+lint.ignore = [
+    # Covered by formatter
+    "ISC001" # single-line-implicit-string-concatenation
+]
+lint.isort.required-imports = [
+    "from __future__ import annotations",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if TYPE_CHECKING:",
+    "if typing\\.TYPE_CHECKING:",
+]
+[tool.coverage.html]
+show_contexts = true
+
+[tool.coverage.run]
+branch = true
+# `parallel` will cause each tox env to put data into a different file, so that we can combine them later
+parallel = true
+source = ["pytest_bdd", "tests"]
+dynamic_context = "test_function"
+
+[tool.coverage.paths]
+# treat these directories as the same when combining
+# the first item is going to be the canonical dir
+source = [
+    "src/pytest_bdd",
+    ".tox/*/lib/python*/site-packages/pytest_bdd",
+]
+
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+files = "src/pytest_bdd/**/*.py"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["parse", "parse_type"]
+ignore_missing_imports = true

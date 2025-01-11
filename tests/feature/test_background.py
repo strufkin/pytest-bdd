@@ -1,16 +1,19 @@
 """Test feature background."""
 
+from __future__ import annotations
+
 import textwrap
 
-
-FEATURE = """\
+FEATURE = '''\
 Feature: Background support
 
     Background:
         Given foo has a value "bar"
-        And a background step with multiple lines:
+        And a background step with docstring:
+        """
             one
             two
+        """
 
 
     Scenario: Basic usage
@@ -22,7 +25,7 @@ Feature: Background support
 
         Then foo should have value "dummy"
         And foo should not have value "bar"
-"""
+'''
 
 STEPS = r"""\
 import re
@@ -34,53 +37,53 @@ def foo():
     return {}
 
 
-@given(parsers.re(r"a background step with multiple lines:\n(?P<data>.+)", flags=re.DOTALL))
-def multi_line(foo, data):
-    assert data == "one\ntwo"
+@given("a background step with docstring:")
+def _(foo, docstring):
+    assert docstring == "one\ntwo"
 
 
 @given('foo has a value "bar"')
-def bar(foo):
+def _(foo):
     foo["bar"] = "bar"
     return foo["bar"]
 
 
 @given('foo has a value "dummy"')
-def dummy(foo):
+def _(foo):
     foo["dummy"] = "dummy"
     return foo["dummy"]
 
 
 @given('foo has no value "bar"')
-def no_bar(foo):
+def _(foo):
     assert foo["bar"]
     del foo["bar"]
 
 
 @then('foo should have value "bar"')
-def foo_has_bar(foo):
+def _(foo):
     assert foo["bar"] == "bar"
 
 
 @then('foo should have value "dummy"')
-def foo_has_dummy(foo):
+def _(foo):
     assert foo["dummy"] == "dummy"
 
 
 @then('foo should not have value "bar"')
-def foo_has_no_bar(foo):
+def _(foo):
     assert "bar" not in foo
 
 """
 
 
-def test_background_basic(testdir):
+def test_background_basic(pytester):
     """Test feature background."""
-    testdir.makefile(".feature", background=textwrap.dedent(FEATURE))
+    pytester.makefile(".feature", background=textwrap.dedent(FEATURE))
 
-    testdir.makeconftest(textwrap.dedent(STEPS))
+    pytester.makeconftest(textwrap.dedent(STEPS))
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         from pytest_bdd import scenario
@@ -92,18 +95,18 @@ def test_background_basic(testdir):
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)
 
 
-def test_background_check_order(testdir):
-    """Test feature background to ensure that backound steps are executed first."""
+def test_background_check_order(pytester):
+    """Test feature background to ensure that background steps are executed first."""
 
-    testdir.makefile(".feature", background=textwrap.dedent(FEATURE))
+    pytester.makefile(".feature", background=textwrap.dedent(FEATURE))
 
-    testdir.makeconftest(textwrap.dedent(STEPS))
+    pytester.makeconftest(textwrap.dedent(STEPS))
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         from pytest_bdd import scenario
@@ -115,5 +118,5 @@ def test_background_check_order(testdir):
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)

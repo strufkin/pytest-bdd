@@ -1,9 +1,12 @@
 """Given tests."""
+
+from __future__ import annotations
+
 import textwrap
 
 
-def test_given_injection(testdir):
-    testdir.makefile(
+def test_given_injection(pytester):
+    pytester.makefile(
         ".feature",
         given=textwrap.dedent(
             """\
@@ -14,7 +17,7 @@ def test_given_injection(testdir):
             """
         ),
     )
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         import pytest
@@ -25,16 +28,16 @@ def test_given_injection(testdir):
             pass
 
         @given("I have injecting given", target_fixture="foo")
-        def injecting_given():
+        def _():
             return "injected foo"
 
 
         @then('foo should be "injected foo"')
-        def foo_is_injected_foo(foo):
+        def _(foo):
             assert foo == "injected foo"
 
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)

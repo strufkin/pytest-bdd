@@ -1,36 +1,41 @@
 """Scenario Outline tests."""
+
+from __future__ import annotations
+
 import textwrap
 
-from tests.utils import assert_outcomes
+from pytest_bdd.utils import collect_dumped_objects
 
 STEPS = """\
-from pytest_bdd import given, when, then
+from pytest_bdd import parsers, given, when, then
+from pytest_bdd.utils import dump_obj
 
 
-@given("there are <start> cucumbers", target_fixture="start_cucumbers")
-def start_cucumbers(start):
+@given(parsers.parse("there are {start:d} cucumbers"), target_fixture="cucumbers")
+def _(start):
     assert isinstance(start, int)
-    return dict(start=start)
+    dump_obj(start)
+    return {"start": start}
 
 
-@when("I eat <eat> cucumbers")
-def eat_cucumbers(start_cucumbers, eat):
+@when(parsers.parse("I eat {eat:g} cucumbers"))
+def _(cucumbers, eat):
     assert isinstance(eat, float)
-    start_cucumbers["eat"] = eat
+    dump_obj(eat)
+    cucumbers["eat"] = eat
 
 
-@then("I should have <left> cucumbers")
-def should_have_left_cucumbers(start_cucumbers, start, eat, left):
+@then(parsers.parse("I should have {left} cucumbers"))
+def _(cucumbers, left):
     assert isinstance(left, str)
-    assert start - eat == int(left)
-    assert start_cucumbers["start"] == start
-    assert start_cucumbers["eat"] == eat
+    dump_obj(left)
+    assert cucumbers["start"] - cucumbers["eat"] == int(left)
 
 """
 
 
-def test_outlined(testdir):
-    testdir.makefile(
+def test_outlined(pytester):
+    pytester.makefile(
         ".feature",
         outline=textwrap.dedent(
             """\
@@ -49,160 +54,128 @@ def test_outlined(testdir):
         ),
     )
 
-    testdir.makeconftest(textwrap.dedent(STEPS))
+    pytester.makeconftest(textwrap.dedent(STEPS))
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
-        from pytest_bdd.utils import get_parametrize_markers_args
         from pytest_bdd import scenario
 
         @scenario(
             "outline.feature",
             "Outlined given, when, thens",
-            example_converters=dict(start=int, eat=float, left=str)
         )
         def test_outline(request):
-            assert get_parametrize_markers_args(request.node) == (
-                ["start", "eat", "left"],
-                [
-                    [12, 5.0, "7"],
-                    [5, 4.0, "1"],
-                ],
-            )
+            pass
 
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest("-s")
     result.assert_outcomes(passed=2)
+    # fmt: off
+    assert collect_dumped_objects(result) == [
+        12, 5.0, "7",
+        5, 4.0, "1",
+    ]
+    # fmt: on
 
 
-def test_wrongly_outlined(testdir):
+def test_multiple_outlined(pytester):
+    pytester.makefile(
+        ".feature",
+        outline_multi_example=textwrap.dedent(
+            """\
+            Feature: Outline With Multiple Examples
+                Scenario Outline: Outlined given, when, thens with multiple examples tables
+                    Given there are <start> cucumbers
+                    When I eat <eat> cucumbers
+                    Then I should have <left> cucumbers
+
+                    @positive
+                    Examples: Positive results
+                        | start | eat | left |
+                        |  12   |  5  |  7   |
+                        |  5    |  4  |  1   |
+
+                    @negative
+                    Examples: Negative results
+                        | start | eat | left |
+                        |  3    |  9  |  -6  |
+                        |  1    |  4  |  -3  |
+            """
+        ),
+    )
+
+    pytester.makeconftest(textwrap.dedent(STEPS))
+
+    pytester.makepyfile(
+        textwrap.dedent(
+            """\
+        from pytest_bdd import scenarios
+
+        scenarios('outline_multi_example.feature')
+
+        """
+        )
+    )
+    result = pytester.runpytest("-s")
+    result.assert_outcomes(passed=4)
+    # fmt: off
+    assert collect_dumped_objects(result) == [
+        12, 5.0, "7",
+        5, 4.0, "1",
+        3, 9.0, "-6",
+        1, 4.0, "-3",
+    ]
+    # fmt: on
+    result = pytester.runpytest("-k", "positive", "-vv")
+    result.assert_outcomes(passed=2, deselected=2)
+
+    result = pytester.runpytest("-k", "positive or negative", "-vv")
+    result.assert_outcomes(passed=4, deselected=0)
+
+
+def test_unused_params(pytester):
     """Test parametrized scenario when the test function lacks parameters."""
 
-    testdir.makefile(
+    pytester.makefile(
         ".feature",
         outline=textwrap.dedent(
             """\
             Feature: Outline
-                Scenario Outline: Outlined with wrong examples
+                Scenario Outline: Outlined with unused params
                     Given there are <start> cucumbers
                     When I eat <eat> cucumbers
                     Then I should have <left> cucumbers
 
                     Examples:
-                    | start | eat | left | unknown_param |
-                    |  12   |  5  |  7   | value         |
+                    | start | eat | left | unused_param |
+                    |  12   |  5  |  7   | value        |
 
             """
         ),
     )
-    testdir.makeconftest(textwrap.dedent(STEPS))
+    pytester.makeconftest(textwrap.dedent(STEPS))
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         from pytest_bdd import scenario
 
-        @scenario("outline.feature", "Outlined with wrong examples")
+        @scenario("outline.feature", "Outlined with unused params")
         def test_outline(request):
             pass
         """
         )
     )
-    result = testdir.runpytest()
-    assert_outcomes(result, errors=1)
-    result.stdout.fnmatch_lines(
-        '*ScenarioExamplesNotValidError: Scenario "Outlined with wrong examples"*has not valid examples*',
-    )
-    result.stdout.fnmatch_lines("*should match set of example values [[]'eat', 'left', 'start', 'unknown_param'[]].*")
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)
 
 
-def test_wrong_vertical_examples_scenario(testdir):
-    """Test parametrized scenario vertical example table has wrong format."""
-    testdir.makefile(
-        ".feature",
-        outline=textwrap.dedent(
-            """\
-            Feature: Outline
-                Scenario Outline: Outlined with wrong vertical example table
-                    Given there are <start> cucumbers
-                    When I eat <eat> cucumbers
-                    Then I should have <left> cucumbers
-
-                    Examples: Vertical
-                    | start | 12 | 2 |
-                    | start | 10 | 1 |
-                    | left  | 7  | 1 |
-            """
-        ),
-    )
-    testdir.makeconftest(textwrap.dedent(STEPS))
-
-    testdir.makepyfile(
-        textwrap.dedent(
-            """\
-        from pytest_bdd import scenario
-
-        @scenario("outline.feature", "Outlined with wrong vertical example table")
-        def test_outline(request):
-            pass
-        """
-        )
-    )
-    result = testdir.runpytest()
-    assert_outcomes(result, errors=1)
-    result.stdout.fnmatch_lines(
-        "*Scenario has not valid examples. Example rows should contain unique parameters. "
-        '"start" appeared more than once.*'
-    )
-
-
-def test_wrong_vertical_examples_feature(testdir):
-    """Test parametrized feature vertical example table has wrong format."""
-    testdir.makefile(
-        ".feature",
-        outline=textwrap.dedent(
-            """\
-            Feature: Outlines
-
-                Examples: Vertical
-                | start | 12 | 2 |
-                | start | 10 | 1 |
-                | left  | 7  | 1 |
-
-                Scenario Outline: Outlined with wrong vertical example table
-                    Given there are <start> cucumbers
-                    When I eat <eat> cucumbers
-                    Then I should have <left> cucumbers
-            """
-        ),
-    )
-    testdir.makeconftest(textwrap.dedent(STEPS))
-
-    testdir.makepyfile(
-        textwrap.dedent(
-            """\
-        from pytest_bdd import scenario
-
-        @scenario("outline.feature", "Outlined with wrong vertical example table")
-        def test_outline(request):
-            pass
-        """
-        )
-    )
-    result = testdir.runpytest()
-    assert_outcomes(result, errors=1)
-    result.stdout.fnmatch_lines(
-        "*Feature has not valid examples. Example rows should contain unique parameters. "
-        '"start" appeared more than once.*'
-    )
-
-
-def test_outlined_with_other_fixtures(testdir):
+def test_outlined_with_other_fixtures(pytester):
     """Test outlined scenario also using other parametrized fixture."""
-    testdir.makefile(
+    pytester.makefile(
         ".feature",
         outline=textwrap.dedent(
             """\
@@ -221,13 +194,12 @@ def test_outlined_with_other_fixtures(testdir):
         ),
     )
 
-    testdir.makeconftest(textwrap.dedent(STEPS))
+    pytester.makeconftest(textwrap.dedent(STEPS))
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         import pytest
-        from pytest_bdd.utils import get_parametrize_markers_args
         from pytest_bdd import scenario
 
 
@@ -239,7 +211,6 @@ def test_outlined_with_other_fixtures(testdir):
         @scenario(
             "outline.feature",
             "Outlined given, when, thens",
-            example_converters=dict(start=int, eat=float, left=str)
         )
         def test_outline(other_fixture):
             pass
@@ -247,162 +218,39 @@ def test_outlined_with_other_fixtures(testdir):
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=6)
 
 
-def test_vertical_example(testdir):
-    """Test outlined scenario with vertical examples table."""
-    testdir.makefile(
-        ".feature",
-        outline=textwrap.dedent(
-            """\
-            Feature: Outline
-                Scenario Outline: Outlined with vertical example table
-                    Given there are <start> cucumbers
-                    When I eat <eat> cucumbers
-                    Then I should have <left> cucumbers
-
-                    Examples: Vertical
-                    | start | 12 | 2 |
-                    | eat   | 5  | 1 |
-                    | left  | 7  | 1 |
-
-            """
-        ),
-    )
-
-    testdir.makeconftest(textwrap.dedent(STEPS))
-
-    testdir.makepyfile(
-        textwrap.dedent(
-            """\
-        from pytest_bdd.utils import get_parametrize_markers_args
-        from pytest_bdd import scenario
-
-        @scenario(
-            "outline.feature",
-            "Outlined with vertical example table",
-            example_converters=dict(start=int, eat=float, left=str)
-        )
-        def test_outline(request):
-            assert get_parametrize_markers_args(request.node) == (
-                ["start", "eat", "left"],
-                [
-                    [12, 5.0, "7"],
-                    [2, 1.0, "1"],
-                ],
-            )
-
-        """
-        )
-    )
-    result = testdir.runpytest()
-    result.assert_outcomes(passed=2)
-
-
-def test_outlined_feature(testdir):
-    testdir.makefile(
-        ".feature",
-        outline=textwrap.dedent(
-            """\
-            Feature: Outline
-
-                Examples:
-                | start | eat | left |
-                |  12   |  5  |  7   |
-                |  5    |  4  |  1   |
-
-                Scenario Outline: Outlined given, when, thens
-                    Given there are <start> <fruits>
-                    When I eat <eat> <fruits>
-                    Then I should have <left> <fruits>
-
-                    Examples:
-                    | fruits  |
-                    | oranges |
-                    | apples  |
-            """
-        ),
-    )
-
-    testdir.makepyfile(
-        textwrap.dedent(
-            """\
-        from pytest_bdd.utils import get_parametrize_markers_args
-        from pytest_bdd import given, when, then, scenario
-
-        @scenario(
-            "outline.feature",
-            "Outlined given, when, thens",
-            example_converters=dict(start=int, eat=float, left=str)
-        )
-        def test_outline(request):
-            assert get_parametrize_markers_args(request.node) == (
-                ["start", "eat", "left"],
-                [[12, 5.0, "7"], [5, 4.0, "1"]],
-                ["fruits"],
-                [["oranges"], ["apples"]],
-            )
-
-        @given("there are <start> <fruits>", target_fixture="start_fruits")
-        def start_fruits(start, fruits):
-            assert isinstance(start, int)
-            return {fruits: dict(start=start)}
-
-
-        @when("I eat <eat> <fruits>")
-        def eat_fruits(start_fruits, eat, fruits):
-            assert isinstance(eat, float)
-            start_fruits[fruits]["eat"] = eat
-
-
-        @then("I should have <left> <fruits>")
-        def should_have_left_fruits(start_fruits, start, eat, left, fruits):
-            assert isinstance(left, str)
-            assert start - eat == int(left)
-            assert start_fruits[fruits]["start"] == start
-            assert start_fruits[fruits]["eat"] == eat
-
-        """
-        )
-    )
-    result = testdir.runpytest()
-    result.assert_outcomes(passed=4)
-
-
-def test_outline_with_escaped_pipes(testdir):
+def test_outline_with_escaped_pipes(pytester):
     """Test parametrized feature example table with escaped pipe characters in input."""
-    testdir.makefile(
+    pytester.makefile(
         ".feature",
         outline=textwrap.dedent(
-            r"""\
-            Feature: Outline With Special characters
+            r"""Feature: Outline With Special characters
 
                 Scenario Outline: Outline with escaped pipe character
-                    Given We have strings <string1> and <string2>
-                    Then <string2> should be the base64 encoding of <string1>
+                    # Just print the string so that we can assert later what it was by reading the output
+                    Given I print the <string>
 
                     Examples:
-                    | string1      | string2          |
-                    | bork         | Ym9yaw==         |
-                    | \|bork       | fGJvcms=         |
-                    | bork \|      | Ym9yayB8         |
-                    | bork\|\|bork | Ym9ya3x8Ym9yaw== |
-                    | \|           | fA==             |
-                    | bork      \\ | Ym9yayAgICAgIFxc |
-                    | bork    \\\| | Ym9yayAgICBcXHw= |
+                    | string       |
+                    | bork         |
+                    | \|bork       |
+                    | bork \|      |
+                    | bork\|\|bork |
+                    | \|           |
+                    | bork      \\ |
+                    | bork    \\\| |
             """
         ),
     )
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
-            import base64
-
-            from pytest_bdd import scenario, given, when, then
-            from pytest_bdd.utils import get_parametrize_markers_args
+            from pytest_bdd import scenario, given, parsers
+            from pytest_bdd.utils import dump_obj
 
 
             @scenario("outline.feature", "Outline with escaped pipe character")
@@ -410,17 +258,122 @@ def test_outline_with_escaped_pipes(testdir):
                 pass
 
 
-            @given("We have strings <string1> and <string2>")
-            def we_have_strings_string1_and_string2(string1, string2):
-                pass
-
-
-            @then("<string2> should be the base64 encoding of <string1>")
-            def string2_should_be_base64_encoding_of_string1(string2, string1):
-                assert string1.encode() == base64.b64decode(string2.encode())
-
+            @given(parsers.parse("I print the {string}"))
+            def _(string):
+                dump_obj(string)
             """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest("-s")
     result.assert_outcomes(passed=7)
+    assert collect_dumped_objects(result) == [
+        r"bork",
+        r"|bork",
+        r"bork |",
+        r"bork||bork",
+        r"|",
+        r"bork      \\",
+        r"bork    \\|",
+    ]
+
+
+def test_forward_slash_in_params(pytester):
+    """Test parametrised scenario when the parameter contains a slash, such in a URL."""
+
+    pytester.makefile(
+        ".feature",
+        outline=textwrap.dedent(
+            """\
+            Feature: Outline
+                Scenario Outline: Outlined with slashes
+                    Given I am in <Country>
+                    Then I visit <Site>
+
+                    Examples:
+                        | Country  | Site                 |
+                        | US       | https://my-site.com  |
+
+            """
+        ),
+    )
+    pytester.makeconftest(textwrap.dedent(STEPS))
+
+    pytester.makepyfile(
+        textwrap.dedent(
+            """\
+            from pytest_bdd import given, parsers, scenarios, then
+            from pytest_bdd.utils import dump_obj
+
+            scenarios('outline.feature')
+
+
+            @given(parsers.parse("I am in {country}"))
+            def _(country):
+                pass
+
+
+            @then(parsers.parse("I visit {site}"))
+            def _(site):
+                dump_obj(site)
+
+        """
+        )
+    )
+    result = pytester.runpytest("-s")
+    result.assert_outcomes(passed=1)
+    assert collect_dumped_objects(result) == ["https://my-site.com"]
+
+
+def test_variable_reuse(pytester):
+    """
+    Test example parameter name and step arg do not redefine each other's value
+    if the same name is used for both in different steps.
+    """
+
+    pytester.makefile(
+        ".feature",
+        outline=textwrap.dedent(
+            """\
+            Feature: Example parameters reuse
+                Scenario Outline: Check for example parameter reuse
+                    Given the param is initially set from the example table as <param>
+                    When a step arg of the same name is set to "other"
+                    Then the param is still set from the example table as <param>
+
+                    Examples:
+                        | param |
+                        | value |
+
+            """
+        ),
+    )
+
+    pytester.makepyfile(
+        textwrap.dedent(
+            """\
+            from pytest_bdd import given, when, then, parsers, scenarios
+            from pytest_bdd.utils import dump_obj
+
+            scenarios('outline.feature')
+
+
+            @given(parsers.parse('the param is initially set from the example table as {param}'))
+            def _(param):
+                dump_obj(("param1", param))
+
+
+            @when(parsers.re('a step arg of the same name is set to "(?P<param>.+)"'))
+            def _(param):
+                dump_obj(("param2", param))
+
+
+            @then(parsers.parse('the param is still set from the example table as {param}'))
+            def _(param):
+                dump_obj(("param3", param))
+
+        """
+        )
+    )
+    result = pytester.runpytest("-s")
+    result.assert_outcomes(passed=1)
+    assert collect_dumped_objects(result) == [("param1", "value"), ("param2", "other"), ("param3", "value")]

@@ -1,10 +1,12 @@
 """Function name same as step name."""
 
+from __future__ import annotations
+
 import textwrap
 
 
-def test_when_function_name_same_as_step_name(testdir):
-    testdir.makefile(
+def test_when_function_name_same_as_step_name(pytester):
+    pytester.makefile(
         ".feature",
         same_name=textwrap.dedent(
             """\
@@ -14,7 +16,7 @@ def test_when_function_name_same_as_step_name(testdir):
             """
         ),
     )
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         from pytest_bdd import when, scenario
@@ -24,10 +26,10 @@ def test_when_function_name_same_as_step_name(testdir):
             pass
 
         @when("something")
-        def something():
+        def _():
             return "something"
         """
         )
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.assert_outcomes(passed=1)

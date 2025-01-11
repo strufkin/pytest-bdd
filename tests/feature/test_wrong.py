@@ -1,13 +1,13 @@
 """Test wrong feature syntax."""
 
+from __future__ import annotations
+
 import textwrap
 
-from tests.utils import assert_outcomes
 
-
-def test_multiple_features_single_file(testdir):
+def test_multiple_features_single_file(pytester):
     """Test validation error when multiple features are placed in a single file."""
-    testdir.makefile(
+    pytester.makefile(
         ".feature",
         wrong=textwrap.dedent(
             """\
@@ -37,7 +37,7 @@ def test_multiple_features_single_file(testdir):
         """
         ),
     )
-    testdir.makepyfile(
+    pytester.makepyfile(
         textwrap.dedent(
             """\
         import pytest
@@ -50,6 +50,6 @@ def test_multiple_features_single_file(testdir):
         """
         )
     )
-    result = testdir.runpytest()
-    assert_outcomes(result, errors=1)
+    result = pytester.runpytest()
+    result.assert_outcomes(errors=1)
     result.stdout.fnmatch_lines("*FeatureError: Multiple features are not allowed in a single feature file.*")
